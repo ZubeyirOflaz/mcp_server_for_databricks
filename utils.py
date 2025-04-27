@@ -2,19 +2,20 @@ import yaml
 import logging
 from logging.handlers import RotatingFileHandler
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.sql import ExecuteStatementRequest
+from databricks.sdk.service.sql import ExecuteStatementRequest, Disposition, Format, ExecuteStatementRequestOnWaitTimeout, StatementState
 from typing import Dict, Any, List, Optional
 import os
 from datetime import datetime
-
-logger = logging.getLogger(__name__)
-
-def validate_config_structure(config: Dict[str, Any]) -> bool:
+import asyncio
+import csv
+import json
+async def validate_config_structure(config: Dict[str, Any], logger: logging.Logger) -> bool:
     """
     Validates that the config file has the correct structure.
     
     Args:
         config: Configuration dictionary to validate
+        logger: Logger instance to use
     
     Returns:
         bool: True if structure is valid, False otherwise
@@ -28,21 +29,34 @@ def validate_config_structure(config: Dict[str, Any]) -> bool:
         }
     }
     
+    optional_fields = {
+        "workspace": {
+            "profile": str,
+            "sample_size": int,
+            "wait_timeout": str
+        }
+    }
+    
     try:
         logger.info("Validating config structure...")
-        # Check if workspace section exists
         if "workspace" not in config:
             logger.error("Missing 'workspace' section in config")
             return False
             
         workspace = config["workspace"]
         
-        # Check all required fields exist and are of correct type
+        # Check required fields
         for field, field_type in required_fields["workspace"].items():
             if field not in workspace:
                 logger.error(f"Missing required field '{field}' in workspace config")
                 return False
             if not isinstance(workspace[field], field_type):
+                logger.error(f"Field '{field}' has incorrect type. Expected {field_type}, got {type(workspace[field])}")
+                return False
+        
+        # Check optional fields if present
+        for field, field_type in optional_fields["workspace"].items():
+            if field in workspace and not isinstance(workspace[field], field_type):
                 logger.error(f"Field '{field}' has incorrect type. Expected {field_type}, got {type(workspace[field])}")
                 return False
                 
@@ -52,56 +66,12 @@ def validate_config_structure(config: Dict[str, Any]) -> bool:
         logger.error(f"Error validating config structure: {str(e)}")
         return False
 
-def setup_logging(log_dir: str = "logs") -> None:
-    """
-    Sets up logging with monthly rotation.
-    Creates a new log file for each month if it doesn't exist.
-    
-    Args:
-        log_dir: Directory to store log files
-    """
-    try:
-        if not os.path.exists(log_dir):
-            logger.info(f"Creating log directory: {log_dir}")
-            os.makedirs(log_dir)
-        
-        # Get current month and year for the log file name
-        current_date = datetime.now()
-        log_file = os.path.join(
-            log_dir,
-            f"mcp_server_{current_date.strftime('%Y_%m')}.log"
-        )
-        
-        # Create a rotating file handler with a large maxBytes to prevent rotation
-        # We'll handle monthly rotation through file naming instead
-        handler = RotatingFileHandler(
-            log_file,
-            maxBytes=100*1024*1024,  # 100MB
-            backupCount=0  # No backup files needed as we use monthly files
-        )
-        
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-        handler.setFormatter(formatter)
-        
-        logger = logging.getLogger()
-        logger.setLevel(logging.INFO)
-        logger.addHandler(handler)
-        
-        # Also log to console
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
-        
-        logger.info("Logging setup completed successfully")
-    except Exception as e:
-        print(f"Error setting up logging: {str(e)}")
-        raise
-
-def load_config() -> Dict[str, Any]:
+async def load_config(logger: logging.Logger) -> Dict[str, Any]:
     """
     Loads and validates configuration from config.yaml
+    
+    Args:
+        logger: Logger instance to use
     
     Returns:
         Configuration dictionary
@@ -120,7 +90,7 @@ def load_config() -> Dict[str, Any]:
         with open("config.yaml", "r") as f:
             config = yaml.safe_load(f)
             
-        if not validate_config_structure(config):
+        if not await validate_config_structure(config, logger):
             logger.error("Invalid configuration structure")
             raise Exception(
                 "Invalid configuration structure. Please run init.py to reconfigure."
@@ -132,11 +102,12 @@ def load_config() -> Dict[str, Any]:
         logger.error(f"Error loading config.yaml: {str(e)}")
         raise Exception(f"Error loading config.yaml: {str(e)}")
 
-def get_table_metadata(
+async def get_table_metadata(
     client: WorkspaceClient,
     warehouse_id: str,
     catalog: Optional[str] = None,
-    schema: Optional[str] = None
+    schema: Optional[str] = None,
+    logger: Optional[logging.Logger] = None
 ) -> List[Dict[str, Any]]:
     """
     Gets metadata for all tables in the specified catalog and schema.
@@ -146,88 +117,213 @@ def get_table_metadata(
         warehouse_id: ID of the SQL warehouse to use
         catalog: Catalog name (optional)
         schema: Schema name (optional)
+        logger: Logger instance to use (optional)
     
     Returns:
         List of table metadata dictionaries
+    
+    Raises:
+        ValueError: If warehouse_id is invalid or connection fails
+        Exception: For other unexpected errors
     """
+    if logger is None:
+        logger = logging.getLogger(__name__)
+    
+    # Read the config file
+    with open("config.yaml", "r") as f:
+        config = yaml.safe_load(f)
+    
+
     try:
+        # Validate warehouse_id
+        if not warehouse_id:
+            raise ValueError("Warehouse ID is required")
+            
         # Build the query based on provided parameters
-        query = "SHOW TABLES"
+        query = "SHOW DATABASES"
         if catalog:
-            query = f"SHOW TABLES IN {catalog}"
+            query = f"SHOW DATABASES IN {catalog}"
             if schema:
                 query = f"SHOW TABLES IN {catalog}.{schema}"
         
         logger.info(f"Executing query: {query}")
-        # Execute the query
-        result = client.statement_execution.execute_statement(
-            warehouse_id=warehouse_id,
-            statement=query
-        ).result()
+        
+        # Execute the query with error handling
+        try:
+            # Execute the statement with proper parameters
+            response = client.statement_execution.execute_statement(
+                warehouse_id=warehouse_id,
+                statement=query,
+                wait_timeout=config["wait_timeout"],  # Wait up to 30 seconds
+                on_wait_timeout=ExecuteStatementRequestOnWaitTimeout.CONTINUE,  # Continue asynchronously if timeout
+                disposition=Disposition.INLINE,  # Get results inline
+                format=Format.JSON_ARRAY  # Use JSON array format
+            )
+            
+            # Get the statement ID
+            statement_id = response.statement_id
+            logger.info(f"Statement ID: {statement_id}")
+            
+            # Get the result using the statement ID
+            result = client.statement_execution.get_statement(statement_id)
+            
+            # Check if the statement is still running
+            while result.status.state in ["PENDING", "RUNNING"]:
+                logger.info(f"Statement state: {result.status.state}")
+                await asyncio.sleep(1)  # Wait for 1 second before checking again
+                result = client.statement_execution.get_statement(statement_id)
+            
+            if result.status.state != StatementState.SUCCEEDED:
+                error_message = f"Statement execution failed with state: {result.status.state}"
+                if result.status.error:
+                    error_message += f", Error: {result.status.error.message}"
+                raise ValueError(error_message)
+            
+        except Exception as e:
+            logger.error(f"Failed to execute query: {str(e)}")
+            raise ValueError(f"Failed to execute query: {str(e)}")
         
         # Process the results
         tables = []
-        for row in result.data_array:
-            tables.append({
-                "catalog": row[0],
-                "schema": row[1],
-                "name": row[2],
-                "is_temporary": row[3] == "true"
-            })
+        if not result.result or not result.result.data_array:
+            logger.warning("No tables found")
+            return tables
+            
+        for row in result.result.data_array:
+            try:
+                tables.append({
+                    "catalog": row[0],
+                    "schema": row[1],
+                    "name": row[2],
+                    "is_temporary": row[3] == "true"
+                })
+            except IndexError as e:
+                logger.error(f"Unexpected row format: {row}")
+                continue
+                
         logger.info(f"Retrieved metadata for {len(tables)} tables")
         return tables
+    except ValueError as e:
+        logger.error(f"Validation error: {str(e)}")
+        raise
     except Exception as e:
-        logger.error(f"Error getting table metadata: {str(e)}")
+        logger.error(f"Unexpected error getting table metadata: {str(e)}")
         raise
 
-def get_table_sample(
+
+async def get_table_sample(
     client: WorkspaceClient,
     warehouse_id: str,
     catalog: str,
     schema: str,
     table: str,
-    limit: int = 5
+    logger: Optional[logging.Logger] = None
 ) -> List[Dict[str, Any]]:
     """
-    Gets a sample of data from a specific table.
+    Gets metadata for all tables in the specified catalog and schema.
     
     Args:
         client: Authenticated WorkspaceClient instance
         warehouse_id: ID of the SQL warehouse to use
-        catalog: Catalog name
-        schema: Schema name
-        table: Table name
-        limit: Number of rows to return
+        catalog: Catalog name (optional)
+        schema: Schema name (optional)
+        logger: Logger instance to use (optional)
     
     Returns:
-        List of dictionaries containing the sample data
+        List of table metadata dictionaries
+    
+    Raises:
+        ValueError: If warehouse_id is invalid or connection fails
+        Exception: For other unexpected errors
     """
+    if logger is None:
+        logger = logging.getLogger(__name__)
+    
+    # Read the config file
+    with open("config.yaml", "r") as f:
+        config = yaml.safe_load(f)
+    
     try:
-        # Build and execute the query
-        query = f"SELECT * FROM {catalog}.{schema}.{table} LIMIT {limit}"
+        # Validate warehouse_id
+        if not warehouse_id:
+            raise ValueError("Warehouse ID is required")
+        sample_size = config["sample_size"]
+            
+        # Build the query based on provided parameters
+        query = f"SELECT * FROM {catalog}.{schema}.{table} LIMIT {sample_size}"
+        
         logger.info(f"Executing query: {query}")
         
-        result = client.statement_execution.execute_statement(
-            warehouse_id=warehouse_id,
-            statement=query
-        ).result()
-        
-        # Process the results
-        samples = []
-        if result.data_array:
-            # Get column names from the first row
-            columns = [col.name for col in result.schema.columns]
-            logger.info(f"Retrieved columns: {columns}")
+        # Execute the query with error handling
+        try:
+            # Execute the statement with proper parameters
+            response = client.statement_execution.execute_statement(
+                warehouse_id=warehouse_id,
+                statement=query,
+                wait_timeout=config["wait_timeout"],  
+                on_wait_timeout=ExecuteStatementRequestOnWaitTimeout.CONTINUE,  # Continue asynchronously if timeout
+                disposition=Disposition.INLINE,  # Get results inline
+                format=Format.JSON_ARRAY  # Use JSON array format
+            )
             
-            # Process each row
-            for row in result.data_array:
-                sample = {}
-                for i, value in enumerate(row):
-                    sample[columns[i]] = value
-                samples.append(sample)
+            # Get the statement ID
+            statement_id = response.statement_id
+            logger.info(f"Statement ID: {statement_id}")
+            
+            # Get the result using the statement ID
+            result = client.statement_execution.get_statement(statement_id)
+            
+            # Check if the statement is still running
+            while result.status.state in ["PENDING", "RUNNING"]:
+                logger.info(f"Statement state: {result.status.state}")
+                await asyncio.sleep(1)  # Wait for 1 second before checking again
+                result = client.statement_execution.get_statement(statement_id)
+            
+            if result.status.state != StatementState.SUCCEEDED:
+                error_message = f"Statement execution failed with state: {result.status.state}"
+                if result.status.error:
+                    error_message += f", Error: {result.status.error.message}"
+                raise ValueError(error_message)
+            
+        except Exception as e:
+            logger.error(f"Failed to execute query: {str(e)}")
+            raise ValueError(f"Failed to execute query: {str(e)}")
+
+        
+        sample_data = result.result.as_dict()['data_array']
+        table_schema = result.manifest.schema.as_dict()['columns']
+        column_names = [col['name'] for col in table_schema]
+
+        
+        sample_dict = [dict(zip(column_names, row)) for row in sample_data]
+        if config["save_table_metadata"]:
+            # Check if .input_data folder exists, if not create it
+            if not os.path.exists("./.input_data"):
+                os.makedirs("./.input_data")
+                # Add .input_data to .gitignore
+                if not os.path.exists("./.gitignore"):
+                    with open("./.gitignore", "w") as f:
+                        f.write(".input_data\n")
+                else:
+                    with open("./.gitignore", "a") as f:
+                        f.write(".input_data\n")
+
+            # Create a folder for the table
+            table_folder = f"./.input_data/{catalog}.{schema}.{table}"
+            if not os.path.exists(table_folder):
+                os.makedirs(table_folder)
+            with open(f"{table_folder}/sample_data.json", "w") as f:
+                json.dump(sample_dict, f, indent=4)
+            with open(f"{table_folder}/table_metadata.json", "w") as f:
+                json.dump(table_schema, f, indent=4)
+        
+        
                 
-        logger.info(f"Retrieved {len(samples)} sample rows")
-        return samples
+        logger.info(f"Retrieved sample data for {catalog}.{schema}.{table} table")
+        return table_schema, sample_dict
+    except ValueError as e:
+        logger.error(f"Validation error: {str(e)}")
+        raise
     except Exception as e:
-        logger.error(f"Error getting table sample: {str(e)}")
-        raise 
+        logger.error(f"Unexpected error getting table metadata: {str(e)}")
+        raise
