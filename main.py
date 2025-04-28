@@ -104,7 +104,7 @@ def get_logger(name: str) -> logging.Logger:
 
 async def databricks_login(host: str) -> bool:
     """
-    Perform Databricks login using the CLI.
+    Perform Databricks login using the CLI with the mcp_server_for_databricks profile.
     
     Args:
         host: Databricks workspace URL
@@ -113,15 +113,15 @@ async def databricks_login(host: str) -> bool:
         bool: True if login was successful, False otherwise
     """
     login_success = False
-
+    profile_name = "mcp_server_for_databricks"
     
     try:
         # Check if already authenticated
-        logging.info(f"Checking Databricks authentication status for host: {host}")
+        logging.info(f"Checking Databricks authentication status for host: {host} using profile: {profile_name}")
         
         # Use Popen instead of run to be able to capture output even on timeout
         process = subprocess.Popen(
-            ["databricks", "auth", "token", "--host", host],
+            ["databricks", "auth", "token", "--host", host, "--profile", profile_name],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
@@ -132,7 +132,7 @@ async def databricks_login(host: str) -> bool:
             returncode = process.returncode
             
             if returncode == 0:
-                logging.info("Already authenticated with Databricks")
+                logging.info(f"Already authenticated with Databricks using profile: {profile_name}")
                 return True
                 
         except subprocess.TimeoutExpired:
@@ -150,10 +150,10 @@ async def databricks_login(host: str) -> bool:
         logging.error(f"Error during Databricks auth check: {str(e)} \n Now trying to execute initial login")
     
     # If we reach here, either auth check failed, timed out, or errored - try login
-    logging.info("Starting Databricks authentication login flow...")
+    logging.info(f"Starting Databricks authentication login flow with profile: {profile_name}...")
     try:
         process = subprocess.Popen(
-            ["databricks", "auth", "login", "--host", host],
+            ["databricks", "auth", "login", "--host", host, "--profile", profile_name],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -171,7 +171,7 @@ async def databricks_login(host: str) -> bool:
                 logging.error(f"Databricks login stderr: {stderr}")
                 logging.error(f"Databricks login stdout: {stdout}")
                 return False
-            logging.info("Successfully logged in to Databricks")
+            logging.info(f"Successfully logged in to Databricks with profile: {profile_name}")
             return True
         except subprocess.TimeoutExpired:
             # Try to get output even after timeout
@@ -231,8 +231,9 @@ async def initialize_globals():
             logger.info("Creating Databricks WorkspaceClient...")
             
             # Get the token from CLI and parse the JSON response
-            token_output = subprocess.check_output(["databricks", "auth", "token", "--host", databricks_host]).decode("utf-8").strip()
-            logger.info("Successfully retrieved auth token")
+            profile_name = "mcp_server_for_databricks"
+            token_output = subprocess.check_output(["databricks", "auth", "token", "--host", databricks_host, "--profile", profile_name]).decode("utf-8").strip()
+            logger.info(f"Successfully retrieved auth token using profile: {profile_name}")
             
             try:
                 # Parse the JSON output
@@ -291,7 +292,7 @@ mcp = FastMCP("mcp_unity")
 
 
 @mcp.tool()
-async def get_schemas() -> List[SchemaInfo]:
+async def get_schemas(catalog: str) -> List[SchemaInfo]:
     """
     Get all schemas and their tables in the workspace for the default catalog.
     """
@@ -306,7 +307,7 @@ async def get_schemas() -> List[SchemaInfo]:
         tables = await get_table_metadata(
             client,
             workspace_config["warehouse_id"],
-            catalog=workspace_config["catalog"],
+            catalog=catalog,
             logger=logger
         )
         
@@ -375,7 +376,5 @@ async def get_table_sample_tool(catalog: str, schema_name: str, table: str) -> D
 
 if __name__ == "__main__":
     # Run everything in a single event loop
-    #asyncio.run(initialize_globals())
     mcp.run(transport='stdio')
-    #sample = asyncio.run(get_table_sample_tool("prod", "config_db", "device_onboarding_table"))
-    #print(sample)
+

@@ -3,19 +3,26 @@ import os
 from databricks.sdk import WorkspaceClient
 import subprocess
 import sys
+import json
 from typing import Dict, Any, List
 
-def setup_databricks_authentication(workspace_url: str) -> None:
+def setup_databricks_authentication(workspace_url: str) -> str:
     """
-    Sets up Databricks authentication using OAuth.
+    Sets up Databricks authentication using OAuth with the profile name "mcp_server_for_databricks"
+    and returns the access token for SDK usage.
     
     Args:
         workspace_url: URL of the Databricks workspace
+        
+    Returns:
+        The Databricks access token
     """
+    profile_name = "mcp_server_for_databricks"
+    
     try:
-        # Run databricks auth login command
+        # Run databricks auth login command with profile name
         process = subprocess.Popen(
-            ["databricks", "auth", "login", "--host", workspace_url],
+            ["databricks", "auth", "login", "--host", workspace_url, "--profile", profile_name],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
@@ -25,7 +32,28 @@ def setup_databricks_authentication(workspace_url: str) -> None:
             print(f"Error during authentication: {stderr.decode()}")
             sys.exit(1)
             
-        print("Authentication successful!")
+        print(f"Authentication successful with profile '{profile_name}'")
+        
+        # Get the token from CLI using the same profile
+        try:
+            token_output = subprocess.check_output(
+                ["databricks", "auth", "token", "--host", workspace_url, "--profile", profile_name]
+            ).decode("utf-8").strip()
+            
+            # Parse the JSON output
+            token_data = json.loads(token_output)
+            access_token = token_data.get("access_token")
+            
+            if not access_token:
+                print("Failed to extract access_token from token response")
+                sys.exit(1)
+                
+            return access_token
+            
+        except json.JSONDecodeError:
+            print(f"Failed to parse token output as JSON")
+            sys.exit(1)
+            
     except FileNotFoundError:
         print("Error: databricks-cli not found. Please install it using: pip install databricks-cli")
         sys.exit(1)
@@ -98,24 +126,25 @@ def main():
         sys.exit(1)
         
     # Setup authentication
-    setup_databricks_authentication(workspace_url)
+    access_token = setup_databricks_authentication(workspace_url)
     
     # Create client
-    client = WorkspaceClient(host=workspace_url)
+    client = WorkspaceClient(
+        host=workspace_url,
+        token=access_token
+    )
     
     # Get warehouse configuration
     warehouse_config = get_warehouse_config(client)
     
-    # Get default catalog
-    catalog = input("\nEnter default catalog (press Enter to skip): ").strip()
+
     
     # Create final config
     config = {
         "workspace": {
             "url": workspace_url,
             "warehouse_id": warehouse_config["warehouse_id"],
-            "warehouse_name": warehouse_config["warehouse_name"],
-            "catalog": catalog if catalog else ""
+            "warehouse_name": warehouse_config["warehouse_name"]
         }
     }
     
