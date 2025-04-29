@@ -24,16 +24,17 @@ async def validate_config_structure(config: Dict[str, Any], logger: logging.Logg
         "workspace": {
             "url": str,
             "warehouse_id": str,
-            "warehouse_name": str,
-            "catalog": str
+            "warehouse_name": str
         }
     }
     
     optional_fields = {
         "workspace": {
+            "catalog": str,
             "profile": str,
             "sample_size": int,
-            "wait_timeout": str
+            "wait_timeout": str,
+            "save_table_metadata": bool
         }
     }
     
@@ -139,6 +140,13 @@ async def get_table_metadata(
         if not warehouse_id:
             raise ValueError("Warehouse ID is required")
             
+        # Use default value for wait_timeout if not in config
+        wait_timeout = "30s"  # Default wait timeout
+        
+        # Override with config value if present
+        if "workspace" in config and "wait_timeout" in config["workspace"]:
+            wait_timeout = config["workspace"]["wait_timeout"]
+            
         # Build the query based on provided parameters
         query = "SHOW DATABASES"
         if catalog:
@@ -154,7 +162,7 @@ async def get_table_metadata(
             response = client.statement_execution.execute_statement(
                 warehouse_id=warehouse_id,
                 statement=query,
-                wait_timeout=config["wait_timeout"],  # Wait up to 30 seconds
+                wait_timeout=wait_timeout,  # Wait up to 30 seconds
                 on_wait_timeout=ExecuteStatementRequestOnWaitTimeout.CONTINUE,  # Continue asynchronously if timeout
                 disposition=Disposition.INLINE,  # Get results inline
                 format=Format.JSON_ARRAY  # Use JSON array format
@@ -247,7 +255,17 @@ async def get_table_sample(
         # Validate warehouse_id
         if not warehouse_id:
             raise ValueError("Warehouse ID is required")
-        sample_size = config["sample_size"]
+            
+        # Use default values if not in config
+        sample_size = 100  # Default sample size
+        wait_timeout = "30s"  # Default wait timeout
+        
+        # Override with config values if present
+        if "workspace" in config:
+            if "sample_size" in config["workspace"]:
+                sample_size = config["workspace"]["sample_size"]
+            if "wait_timeout" in config["workspace"]:
+                wait_timeout = config["workspace"]["wait_timeout"]
             
         # Build the query based on provided parameters
         query = f"SELECT * FROM {catalog}.{schema}.{table} LIMIT {sample_size}"
@@ -260,7 +278,7 @@ async def get_table_sample(
             response = client.statement_execution.execute_statement(
                 warehouse_id=warehouse_id,
                 statement=query,
-                wait_timeout=config["wait_timeout"],  
+                wait_timeout=wait_timeout,  
                 on_wait_timeout=ExecuteStatementRequestOnWaitTimeout.CONTINUE,  # Continue asynchronously if timeout
                 disposition=Disposition.INLINE,  # Get results inline
                 format=Format.JSON_ARRAY  # Use JSON array format
@@ -296,7 +314,15 @@ async def get_table_sample(
 
         
         sample_dict = [dict(zip(column_names, row)) for row in sample_data]
-        if config["save_table_metadata"]:
+        
+        # Default to saving table metadata
+        save_table_metadata = False
+        
+        # Check if save_table_metadata is specified in config
+        if "workspace" in config and "save_table_metadata" in config["workspace"]:
+            save_table_metadata = config["workspace"]["save_table_metadata"]
+            
+        if save_table_metadata:
             # Check if .input_data folder exists, if not create it
             if not os.path.exists("./.input_data"):
                 os.makedirs("./.input_data")
@@ -309,7 +335,7 @@ async def get_table_sample(
                         f.write(".input_data\n")
 
             # Create a folder for the table
-            table_folder = f"./.input_data/{catalog}.{schema}.{table}"
+            table_folder = f"./.input_data/{catalog}/{schema}/{table}"
             if not os.path.exists(table_folder):
                 os.makedirs(table_folder)
             with open(f"{table_folder}/sample_data.json", "w") as f:
