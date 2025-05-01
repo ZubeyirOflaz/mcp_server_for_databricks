@@ -373,6 +373,51 @@ async def get_table_sample_tool(catalog: str, schema_name: str, table: str) -> D
         logger.error(f"Error getting table sample: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@mcp.tool()
+async def get_schema_metadata(catalog_name:str, schema_name:str):
+    """
+    This function will return the schema metadata for a given schema.
+    Args:
+        catalog_name: Catalog name
+        schema_name: Schema name
+    Returns:
+        Dictionary with schema metadata, schema metadata is provided in the following format:
+        {
+            "schema_comment": "Schema comment",
+            "tables": {
+                "table_name": {
+                    "comment": "Table comment",
+                    "created_at": "Table created at",
+                    "table_type": "Table type",
+                    "owner": "Table owner"
+                }
+            }
+        }
+    """
+  
+    global login_initialization_complete, client, workspace_config, logger
+    
+    try:
+        if not login_initialization_complete:
+            #return "Server initialization is not completed, please wait for the server to complete startup and try again."
+            await initialize_globals()
+        # Get the comment for the schema if it exists
+        schema_comment = client.schemas.get(f"{catalog_name}.{schema_name}").comment
+        tables = client.tables.list(catalog_name, schema_name)
+        schema_metadata = {}
+        schema_metadata['schema_comment'] = schema_comment
+        schema_metadata['tables'] = {}
+        for table in tables:
+            schema_metadata['tables'][table.name] = {
+                'comment' : table.comment,
+                'created_at': table.created_at,
+                'table_type': table.table_type,
+                'owner': table.owner}
+        return schema_metadata
+    except Exception as e:
+        logger.error(f"Error getting table sample: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
 
 if __name__ == "__main__":
     # Run everything in a single event loop
