@@ -339,36 +339,34 @@ async def get_schemas(catalog: str) -> List[SchemaInfo]:
 @mcp.tool()
 async def get_table_sample_tool(catalog: str, schema_name: str, table: str) -> Dict[str, Any]:
     """
-    Return and save sample data for a given table using get_table_sample from utils. This function will save the sample data and table metadata to the .input_data folder.
-    If the table metadata already exists use the existing metadata instead of running the tool again unless user explicitly asks to run the tool again.
+    Return and save detailed table metadata, including integrated sample data, for a given table.
+    This function will save the sample data and table metadata to the .input_data folder if configured.
     Args:
         catalog: Catalog name
         schema_name: Schema name
         table: Table name
     Returns:
-        Dictionary with schema and sample data
+        Dictionary with detailed table metadata including sample values.
     """
     global login_initialization_complete, client, workspace_config, logger
     try:
         if not login_initialization_complete:
-            #return "Server initialization is not completed, please wait for the server to complete startup and try again."
             await initialize_globals()
             
-        logger.info(f"Getting sample data for {catalog}.{schema_name}.{table}")
+        logger.info(f"Getting table metadata and sample data for {catalog}.{schema_name}.{table}")
 
-        schema_info, sample_data = await get_table_sample(
-            client,
-            workspace_config["warehouse_id"],
-            catalog,
-            schema_name,
-            table,
+        # Call get_table_sample which now returns only metadata with integrated sample values
+        table_metadata = await get_table_sample(
+            client=client, # Use the global client
+            warehouse_id=workspace_config["warehouse_id"],
+            catalog=catalog,
+            schema=schema_name,
+            table=table,
             logger=logger
         )
 
-        return {
-            "schema": schema_info,
-            "sample": sample_data
-        }
+        # Return the comprehensive metadata dictionary
+        return table_metadata
     except Exception as e:
         logger.error(f"Error getting table sample: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

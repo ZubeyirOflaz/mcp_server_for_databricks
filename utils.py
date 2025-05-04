@@ -228,9 +228,9 @@ async def get_table_sample(
     schema: str,
     table: str,
     logger: Optional[logging.Logger] = None
-) -> tuple[Dict[str, Any], List[Dict[str, Any]]]:
+) -> Dict[str, Any]:
     """
-    Gets sample data and detailed metadata for a specific table.
+    Gets detailed metadata for a specific table, including sample data integrated into the metadata.
     
     Args:
         client: Authenticated WorkspaceClient instance
@@ -241,7 +241,7 @@ async def get_table_sample(
         logger: Logger instance to use (optional)
     
     Returns:
-        Tuple containing (table_metadata, sample_data)
+        Dictionary containing detailed table metadata with integrated sample values.
     
     Raises:
         ValueError: If warehouse_id is invalid or connection fails
@@ -259,8 +259,6 @@ async def get_table_sample(
         if not warehouse_id:
             raise ValueError("Warehouse ID is required")
             
-        # Use default values if not in config
-        sample_size = 100  # Default sample size
         wait_timeout = "30s"  # Default wait timeout
         
         # Override with config values if present
@@ -326,6 +324,14 @@ async def get_table_sample(
             table_name=table,
             logger=logger
         )
+
+        # Integrate sample values into table_metadata
+        if table_metadata and 'columns' in table_metadata and sample_dict:
+            for column_info in table_metadata['columns']:
+                column_name = column_info['name']
+                # Extract sample values for this column, handling potential missing keys
+                column_sample_values = [row.get(column_name) for row in sample_dict if column_name in row]
+                column_info['sample_values'] = column_sample_values
         
         # Default to saving table metadata
         save_table_metadata = False
@@ -360,7 +366,7 @@ async def get_table_sample(
                 json.dump(table_metadata, f, indent=4)
         
         logger.info(f"Retrieved sample data and detailed metadata for {catalog}.{schema}.{table} table")
-        return table_metadata, sample_dict
+        return table_metadata
     except ValueError as e:
         logger.error(f"Validation error: {str(e)}")
         raise
