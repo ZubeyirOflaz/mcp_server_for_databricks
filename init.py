@@ -137,14 +137,30 @@ def main():
     # Get warehouse configuration
     warehouse_config = get_warehouse_config(client)
     
-
+    # Get sample size
+    while True:
+        try:
+            sample_size_input = input("\nEnter the desired sample size (number of rows) for retrieving table data [default: 5]: ").strip()
+            if not sample_size_input:
+                sample_size = 5  # Default value
+                print("Using default sample size of 5.")
+                break
+            sample_size = int(sample_size_input)
+            if sample_size > 0:
+                break
+            else:
+                print("Sample size must be a positive integer.")
+        except ValueError:
+            print("Invalid input. Please enter an integer.")
+            
     
     # Create final config
     config = {
         "workspace": {
             "url": workspace_url,
             "warehouse_id": warehouse_config["warehouse_id"],
-            "warehouse_name": warehouse_config["warehouse_name"]
+            "warehouse_name": warehouse_config["warehouse_name"],
+            "sample_size": sample_size
         }
     }
     
