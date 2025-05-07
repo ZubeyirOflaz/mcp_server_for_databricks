@@ -11,7 +11,8 @@ from logging.handlers import RotatingFileHandler
 from utils import (
     load_config,
     get_table_metadata,
-    get_table_sample
+    get_table_sample,
+    get_run_result
 )
 import asyncio
 import os
@@ -416,6 +417,44 @@ async def get_schema_metadata(catalog_name:str, schema_name:str):
         logger.error(f"Error getting table sample: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
     
+@mcp.tool()
+async def get_job_run_result(job_name: str, filter_for_failed_runs: bool = False) -> str:
+    """
+    Retrieves the results of the last run of a specified Databricks job.
+
+    Args:
+        job_name: The name of the Databricks job.
+        filter_for_failed_runs: If True, retrieves the result of the last failed run only. 
+                                  Defaults to False (retrieves the last completed run regardless of status).
+
+    Returns:
+        A string containing the error message, error traceback, and metadata for the selected run.
+    """
+    global login_initialization_complete, client, logger
+
+    try:
+        if not login_initialization_complete:
+            await initialize_globals()
+
+        logger.info(f"Getting run result for job '{job_name}', filter_for_failed_runs={filter_for_failed_runs}")
+
+        # Call the utility function from utils.py
+        run_result_output = await get_run_result(
+            job_name=job_name,
+            client=client,
+            logger=logger,
+            filter_for_failed_runs=filter_for_failed_runs
+        )
+
+        logger.info(f"Successfully retrieved run result for job '{job_name}'")
+        return run_result_output
+
+    except ValueError as ve:
+        logger.error(f"Value error getting run result for job '{job_name}': {str(ve)}")
+        raise HTTPException(status_code=404, detail=str(ve)) # 404 if job/run not found
+    except Exception as e:
+        logger.error(f"Error getting run result for job '{job_name}': {type(e).__name__}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get run result: {str(e)}")
 
 if __name__ == "__main__":
     # Run everything in a single event loop
