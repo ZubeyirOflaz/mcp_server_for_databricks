@@ -13,6 +13,7 @@ The primary goal is to simplify common Databricks metadata retrieval tasks for u
 *   Python (version 3.x recommended)
 *   `uv` (Python package installer and virtual environment manager). You can install it following the instructions at https://github.com/astral-sh/uv.
 *   `databricks-cli` installed and accessible in your system\'s PATH.
+### **Important Note:** The databricks_cli available from pypi has the version 0.18 which is quite old and not supported for this project. To install the latest version of databricks_cli, please go to the official Databricks page and follow the directions 
 
 ### Installation
 
@@ -24,7 +25,7 @@ The primary goal is to simplify common Databricks metadata retrieval tasks for u
 2.  **Create a virtual environment and install dependencies:**
     ```bash
     uv venv  # Create a virtual environment (e.g., .venv)
-    uv sync  # Install dependencies from pyproject.toml and uv.lock
+    uv sync  # Install dependencies using pyproject.toml and uv.lock
     source .venv/bin/activate # Activate the virtual environment (use `.venv\\Scripts\\activate` on Windows)
     ```
 
@@ -39,9 +40,35 @@ Before running the server for the first time, you need to configure its connecti
 2.  **Follow the prompts:**
     *   Enter your Databricks **workspace URL** (e.g., `https://adb-xxxxxxxxxxxx.azuredatabricks.net`).
     *   The script will initiate the Databricks CLI **OAuth login flow** using the profile name `mcp_server_for_databricks`. Follow the instructions provided by the CLI in your terminal/browser to authenticate.
-    *   Select an available **SQL Warehouse** from the list provided. This warehouse will be used for executing metadata queries.
+    *   Select an available **SQL Warehouse** from the list provided. This warehouse will be used for executing metadata queries by the available mcp tools.
     *   Enter the desired **sample size** (number of rows) to retrieve when using the table sampling tool. Press Enter to use the default (5).
 3.  **Configuration Saved:** The script will save the workspace URL, selected warehouse ID/name, and sample size into a `config.yaml` file in the project root.
+
+4. **(For Cursor) Adding to Cursor IDE**
+
+Once the server is initialized and dependencies are installed, you can add it to Cursor:
+
+1.  **Open Cursor Settings:** Navigate to `Cursor Settings` > `Features` > `MCP`.
+2.  **Add New MCP Server:** Click on the `+ Add New MCP Server` button.
+3.  **Configure the Server:**
+    Paste the mcp server details as shown in the example below
+```json
+{
+  "mcpServers": {
+    "mcp_server_for_databricks": {
+      "command": "/path/to/uv/executable/uv",
+      "args": [
+        "--directory",
+        "/PATH/TO/THIS/REPO",
+        "run",
+        "main.py"
+      ]
+    }
+  }
+}
+```
+
+4.  **Save and Refresh:** Save the configuration. You might need to click the refresh button for the server in the MCP list to populate its tools.
 
 ## 3. How it Works
 
