@@ -100,14 +100,62 @@ The following tools are exposed by this server:
         *   `catalog` (str): The catalog name.
         *   `schema_name` (str): The schema name.
         *   `table` (str): The table name.
-    *   **Returns:** A dictionary containing detailed table metadata with an added `sample_values` list for each column.
+    *   **Returns:** The structure of the dictionary returned is as follows:
+        ```json
+        {
+            "name": "string (table name)",
+            "catalog_name": "string (catalog name)",
+            "schema_name": "string (schema name)",
+            "table_type": "string (e.g., MANAGED, EXTERNAL, VIEW)",
+            "data_source_format": "string (e.g., DELTA, CSV, PARQUET)",
+            "columns": [
+                {
+                    "name": "string (column name)",
+                    "type_name": "string (column data type e.g. INT, STRING)",
+                    "comment": "string (column comment or null)",
+                    "nullable": "boolean",
+                    "partition_index": "integer (or null, 0-indexed if column is a partition column)",
+                    "mask": "object (column mask details or null)",
+                    "sample_values": ["list of sample values (mixed types)"]
+                }
+                // ... more columns
+            ],
+            "comment": "string (table comment or null)",
+            "properties": {
+                "property_key": "property_value"
+                // ... more properties
+            },
+            "storage_location": "string (path to storage or null for managed tables/views)",
+            "view_definition": "string (SQL definition if it's a view, else null)",
+            "table_id": "string (unique table identifier)",
+            "created_at": "string (ISO 8601 timestamp or null)",
+            "updated_at": "string (ISO 8601 timestamp or null)",
+            "deleted_at": "string (ISO 8601 timestamp or null, if applicable)",
+            "row_filter": "object (row filter details or null)",
+            "owner": "string (owner of the table, e.g., user or group)"
+        }
+        ```
 
 *   **`get_schema_metadata(catalog_name: str, schema_name: str)`**
     *   **Description:** Retrieves metadata for a specific schema, including the schema comment and details for each table within it (table comment, creation timestamp, table type, owner).
     *   **Arguments:**
         *   `catalog_name` (str): The catalog name.
         *   `schema_name` (str): The schema name.
-    *   **Returns:** A dictionary containing `schema_comment` and a nested `tables` dictionary with metadata for each table.
+    *   **Returns:** The structure of the dictionary returned is as follows (the `tables` dictionary will contain an entry for each table in the schema):
+        ```json
+        {
+            "schema_comment": "string (Schema comment or null)",
+            "tables": {
+                "your_table_name_here": {
+                    "comment": "string (Table comment or null)",
+                    "created_at": "string (ISO 8601 timestamp)",
+                    "table_type": "string (e.g., MANAGED, EXTERNAL, VIEW)",
+                    "owner": "string (Table owner)"
+                }
+                // ... more tables
+            }
+        }
+        ```
 
 *   **`get_job_run_result(job_name: str, filter_for_failed_runs: bool = False)`**
     *   **Description:** Retrieves the results from the most recent run of a specified Databricks job. Provides options to get the latest run regardless of status or specifically the *last failed* run.
