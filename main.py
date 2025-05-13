@@ -19,15 +19,6 @@ import os
 from datetime import datetime
 import json
 
-# Define data models
-class TableMetadata(BaseModel):
-    catalog: str
-    schema_name: str
-    name: str
-    is_temporary: bool
-
-class TableSample(BaseModel):
-    data: List[Dict[str, Any]]
 
 class SchemaInfo(BaseModel):
     catalog: str

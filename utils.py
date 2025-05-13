@@ -26,6 +26,7 @@ async def validate_config_structure(config: Dict[str, Any], logger: logging.Logg
         "workspace": {
             "url": str,
             "warehouse_id": str,
+            "sample_size": int,
             "warehouse_name": str
         }
     }
@@ -34,7 +35,6 @@ async def validate_config_structure(config: Dict[str, Any], logger: logging.Logg
         "workspace": {
             "catalog": str,
             "profile": str,
-            "sample_size": int,
             "wait_timeout": str,
             "save_table_metadata": bool
         }
