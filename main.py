@@ -10,7 +10,7 @@ from mcp.server.fastmcp import FastMCP
 from logging.handlers import RotatingFileHandler
 from utils import (
     load_config,
-    get_table_metadata,
+    get_schema_list,
     get_table_sample,
     get_run_result
 )
@@ -19,11 +19,6 @@ import os
 from datetime import datetime
 import json
 
-
-class SchemaInfo(BaseModel):
-    catalog: str
-    schema_name: str
-    tables: List[str]
 
 # Constants
 login_initialization_complete = False
@@ -284,7 +279,7 @@ mcp = FastMCP("mcp_unity")
 
 
 @mcp.tool()
-async def get_schemas(catalog: str) -> List[SchemaInfo]:
+async def get_schemas(catalog: str):
     """
     Get all schemas and their tables in the workspace for the default catalog.
     """
@@ -296,33 +291,16 @@ async def get_schemas(catalog: str) -> List[SchemaInfo]:
             
         logger.info("Globals initialized: %s", login_initialization_complete)
         logger.info("Getting schemas...")
-        tables = await get_table_metadata(
+        schemas = await get_schema_list(
             client,
-            workspace_config["warehouse_id"],
             catalog=catalog,
             logger=logger
         )
         
         # Group tables by schema
         schemas: Dict[str, List[str]] = {}
-        for table in tables:
-            schema_key = f"{table['catalog']}.{table['schema']}"
-            if schema_key not in schemas:
-                schemas[schema_key] = []
-            schemas[schema_key].append(table["name"])
-        
-        # Convert to SchemaInfo objects
-        result = []
-        for schema_key, table_names in schemas.items():
-            catalog, schema_name = schema_key.split(".")
-            result.append(SchemaInfo(
-                catalog=catalog,
-                schema_name=schema_name,
-                tables=table_names
-            ))
-        
-        logger.info(f"Found {len(result)} schemas")
-        return result
+        return schemas
+    
     except Exception as e:
         logger.error(f"Error getting schemas: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

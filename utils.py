@@ -105,13 +105,11 @@ async def load_config(logger: logging.Logger) -> Dict[str, Any]:
         logger.error(f"Error loading config.yaml: {str(e)}")
         raise Exception(f"Error loading config.yaml: {str(e)}")
 
-async def get_table_metadata(
+async def get_schema_list(
     client: WorkspaceClient,
-    warehouse_id: str,
-    catalog: Optional[str] = None,
-    schema: Optional[str] = None,
+    catalog: str,
     logger: Optional[logging.Logger] = None
-) -> List[Dict[str, Any]]:
+):
     """
     Gets metadata for all tables in the specified catalog and schema.
     
@@ -119,14 +117,12 @@ async def get_table_metadata(
         client: Authenticated WorkspaceClient instance
         warehouse_id: ID of the SQL warehouse to use
         catalog: Catalog name (optional)
-        schema: Schema name (optional)
         logger: Logger instance to use (optional)
     
     Returns:
         List of table metadata dictionaries
     
     Raises:
-        ValueError: If warehouse_id is invalid or connection fails
         Exception: For other unexpected errors
     """
     if logger is None:
@@ -138,86 +134,13 @@ async def get_table_metadata(
     
 
     try:
-        # Validate warehouse_id
-        if not warehouse_id:
-            raise ValueError("Warehouse ID is required")
-            
-        # Use default value for wait_timeout if not in config
-        wait_timeout = "30s"  # Default wait timeout
-        
-        # Override with config value if present
-        if "workspace" in config and "wait_timeout" in config["workspace"]:
-            wait_timeout = config["workspace"]["wait_timeout"]
-            
-        # Build the query based on provided parameters
-        query = "SHOW DATABASES"
-        if catalog:
-            query = f"SHOW DATABASES IN {catalog}"
-            if schema:
-                query = f"SHOW TABLES IN {catalog}.{schema}"
-        
-        logger.info(f"Executing query: {query}")
-        
-        # Execute the query with error handling
-        try:
-            # Execute the statement with proper parameters
-            response = client.statement_execution.execute_statement(
-                warehouse_id=warehouse_id,
-                statement=query,
-                wait_timeout=wait_timeout,  # Wait up to 30 seconds
-                on_wait_timeout=ExecuteStatementRequestOnWaitTimeout.CONTINUE,  # Continue asynchronously if timeout
-                disposition=Disposition.INLINE,  # Get results inline
-                format=Format.JSON_ARRAY  # Use JSON array format
-            )
-            
-            # Get the statement ID
-            statement_id = response.statement_id
-            logger.info(f"Statement ID: {statement_id}")
-            
-            # Get the result using the statement ID
-            result = client.statement_execution.get_statement(statement_id)
-            
-            # Check if the statement is still running
-            while result.status.state in ["PENDING", "RUNNING"]:
-                logger.info(f"Statement state: {result.status.state}")
-                await asyncio.sleep(1)  # Wait for 1 second before checking again
-                result = client.statement_execution.get_statement(statement_id)
-            
-            if result.status.state != StatementState.SUCCEEDED:
-                error_message = f"Statement execution failed with state: {result.status.state}"
-                if result.status.error:
-                    error_message += f", Error: {result.status.error.message}"
-                raise ValueError(error_message)
-            
-        except Exception as e:
-            logger.error(f"Failed to execute query: {str(e)}")
-            raise ValueError(f"Failed to execute query: {str(e)}")
-        
-        # Process the results
-        tables = []
-        if not result.result or not result.result.data_array:
-            logger.warning("No tables found")
-            return tables
-            
-        for row in result.result.data_array:
-            try:
-                tables.append({
-                    "catalog": row[0],
-                    "schema": row[1],
-                    "name": row[2],
-                    "is_temporary": row[3] == "true"
-                })
-            except IndexError as e:
-                logger.error(f"Unexpected row format: {row}")
-                continue
-                
-        logger.info(f"Retrieved metadata for {len(tables)} tables")
-        return tables
-    except ValueError as e:
-        logger.error(f"Validation error: {str(e)}")
-        raise
+        schema_list = await asyncio.to_thread(
+            client.schemas.list,
+            catalog_name = catalog
+        )
+        return schema_list
     except Exception as e:
-        logger.error(f"Unexpected error getting table metadata: {str(e)}")
+        logger.error(f"Error getting schema list: {str(e)}")
         raise
 
 
