@@ -297,8 +297,6 @@ async def get_schemas(catalog: str):
             logger=logger
         )
         
-        # Group tables by schema
-        schemas: Dict[str, List[str]] = {}
         return schemas
     
     except Exception as e:

@@ -138,7 +138,8 @@ async def get_schema_list(
             client.schemas.list,
             catalog_name = catalog
         )
-        return schema_list
+        schema_list = [i.as_dict() for i in schema_list]
+        return list(schema_list)
     except Exception as e:
         logger.error(f"Error getting schema list: {str(e)}")
         raise
