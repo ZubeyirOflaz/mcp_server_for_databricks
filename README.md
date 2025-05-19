@@ -6,6 +6,15 @@ This project provides a server application that acts as an interface to a Databr
 
 The primary goal is to simplify common Databricks metadata retrieval tasks for users interacting via the MCP interface, leveraging the Databricks SDK and CLI for backend communication.
 
+### Main goal and features of the server:
+
+This model context protocol aims to provide tools be used with an IDE to provide your agents the context about your Databricks environment (though the tools that are provided are not only useful for IDE based development work). By doing so, it increases the effectiveness of agents while assisting you writing code for your workspace and minimizes the amount of additional information you need to provide manually. This is achieved through the following architecture:
+
+1. OAuth U2M authentication: This server uses Databricks cli to provide authentication between you and your Databricks workspace. This removes the need for creating tokens and storing them locally that is a requirement for most alternative solutions.
+2. Provide metadata for your catalog objects: The existing mcp tools provide metadata for your catalogs, schemas and tables using Databricks SDK. Similarly, you can get the run results for your workflows for any improvements or troubleshooting needs for yourself.
+3. Provide sample data for tables: When retrieving information related to a table with get_table_sample_tool, this server also retrieves sample rows using an sql warehouse that can be accessed by the user. The sample rows are then added to the metadata of each column to enrich the context provided. 
+
+
 ## 2. Installation and Initialization
 
 ### Prerequisites
