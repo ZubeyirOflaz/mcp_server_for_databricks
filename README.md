@@ -172,3 +172,8 @@ The following tools are exposed by this server:
         *   `job_name` (str): The exact name of the Databricks job.
         *   `filter_for_failed_runs` (bool, optional): If `True`, retrieves the result of the last failed run only. Defaults to `False` (retrieves the last completed run).
     *   **Returns:** A string containing the error message, error traceback, and metadata associated with the selected job run.
+
+# Known Issues:
+* Currently the JWT token is not automatically refreshed after its' validity threshold passes. Because of this, if the MCP server has been running for more than 12 hours it needs to be restarted. This will be fixed soon
+* get_table_sample_tool can retrieve too much context for very wide tables or tables that have a lot of comments. If the user encounters this issue, sample_size in config file can be reduced to minimize this risk.
+* Current version requires the user to change workspace manually when the user wants to retrieve information from another Databricks workspace which is a significant problem for organizations that haven't transitioned to Unity Catalog yet. The ability to specify different workspaces will be made available with later versions
