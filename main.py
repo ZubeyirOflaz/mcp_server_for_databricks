@@ -1,8 +1,7 @@
-import httpx
 import sys
 import logging
 import subprocess
-from fastapi import FastAPI, HTTPException
+from fastapi import HTTPException
 from pydantic import BaseModel
 from databricks.sdk import WorkspaceClient
 from typing import List, Dict, Any, Optional
@@ -26,6 +25,7 @@ config = None
 workspace_config = None
 client = None
 logger = None
+token_expiry_datetime = None
 
 def setup_logging(log_dir: str = ".logs", log_filename: str = "mcp_unity.log") -> logging.Logger:
     """
@@ -89,7 +89,7 @@ def get_logger(name: str) -> logging.Logger:
     # Use the root logger's handlers
     return logging.getLogger(name)
 
-async def databricks_login(host: str) -> bool:
+async def databricks_login(host: str, refresh_token: bool = False) -> bool:
     """
     Perform Databricks login using the CLI with the mcp_server_for_databricks profile.
     
@@ -176,7 +176,13 @@ async def databricks_login(host: str) -> bool:
         return False
     return login_success
             
-    
+def check_if_token_expired():
+    global token_expiry_datetime
+    if token_expiry_datetime is None:
+        return True
+    if datetime.now() > token_expiry_datetime:
+        return True
+    return False
 
 async def initialize_globals():
     global login_initialization_complete
@@ -184,25 +190,32 @@ async def initialize_globals():
     global workspace_config
     global client
     global logger
+    global token_expiry_datetime
     if login_initialization_complete:
-        return None
-    
-    # Set up logging
-    setup_logging()
+        if check_if_token_expired():
+            # If the token is expired, only execute to refresh the token and client
+            partial_execution = True
+        else:
+            return None
+    else:
+        partial_execution = False
+        setup_logging()
+        
     logger = logging.getLogger(__name__)
-    logger.info("Initializing globals...")
-    
+    if not partial_execution:
+        logger.info("Initializing globals...")
+    else:
+        logger.info("Partial execution initiated to refresh token and client...")
     try:
         config = await load_config(logger)
         workspace_config = config["workspace"]
-        logger.info(f"Loaded config: {config}")
         
         # Validate Databricks configuration
         if "url" not in config["workspace"]:
             raise ValueError("Missing url in workspace config")
             
         databricks_host = config["workspace"]["url"]
-        logger.info(f"Using Databricks host: {databricks_host}")
+        logger.info(f"Logging using Databricks host: {databricks_host}")
        
         # Initialize Databricks client first
         try:
@@ -226,6 +239,7 @@ async def initialize_globals():
                 # Parse the JSON output
                 token_data = json.loads(token_output)
                 access_token = token_data.get("access_token")
+                token_expiry_datetime = datetime.fromisoformat(token_data.get("expiry"))
                 
                 if not access_token:
                     logger.error("Failed to extract access_token from token response")
@@ -239,16 +253,15 @@ async def initialize_globals():
                     host=databricks_host,
                     token=access_token
                 )
+                
                 logger.info("WorkspaceClient created successfully with access_token")
+                if partial_execution:
+                    return None
+                
             except json.JSONDecodeError:
                 logger.error(f"Failed to parse token output as JSON: {token_output}")
                 raise ValueError("Invalid JSON response from databricks auth token command")
-            
-            # Test the connection
-            logger.info("Testing Databricks connection by listing catalogs...")
-            catalogs = client.catalogs.list()
-            catalog_names = [c.name for c in catalogs]
-            logger.info(f"Successfully connected to Databricks workspace. Available catalogs: {catalog_names}")
+
                 
         except Exception as e:
             logger.error(f"Failed to connect to Databricks: {type(e).__name__}: {str(e)}")
