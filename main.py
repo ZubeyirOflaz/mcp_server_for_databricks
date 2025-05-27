@@ -299,8 +299,7 @@ async def get_schemas(catalog: str):
     global login_initialization_complete, client, workspace_config, logger
     
     try:
-        if not login_initialization_complete:
-            await initialize_globals()
+        await initialize_globals()
             
         logger.info("Globals initialized: %s", login_initialization_complete)
         logger.info("Getting schemas...")
@@ -331,8 +330,7 @@ async def get_table_sample_tool(catalog: str, schema_name: str, table: str) -> D
     """
     global login_initialization_complete, client, workspace_config, logger
     try:
-        if not login_initialization_complete:
-            await initialize_globals()
+        await initialize_globals()
             
         logger.info(f"Getting table metadata and sample data for {catalog}.{schema_name}.{table}")
 
@@ -377,9 +375,7 @@ async def get_schema_metadata(catalog_name:str, schema_name:str):
     global login_initialization_complete, client, workspace_config, logger
     
     try:
-        if not login_initialization_complete:
-            #return "Server initialization is not completed, please wait for the server to complete startup and try again."
-            await initialize_globals()
+        await initialize_globals()
         # Get the comment for the schema if it exists
         schema_comment = client.schemas.get(f"{catalog_name}.{schema_name}").comment
         tables = client.tables.list(catalog_name, schema_name)
@@ -413,8 +409,7 @@ async def get_job_run_result(job_name: str, filter_for_failed_runs: bool = False
     global login_initialization_complete, client, logger
 
     try:
-        if not login_initialization_complete:
-            await initialize_globals()
+        await initialize_globals()
 
         logger.info(f"Getting run result for job '{job_name}', filter_for_failed_runs={filter_for_failed_runs}")
 
