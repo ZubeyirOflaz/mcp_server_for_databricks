@@ -15,7 +15,7 @@ from utils import (
 )
 import asyncio
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 
@@ -55,7 +55,7 @@ def setup_logging(log_dir: str = ".logs", log_filename: str = "mcp_unity.log") -
         log_file, 
         maxBytes=10*1024*1024, 
         backupCount=5,
-        delay=False  # Open the file immediately
+        delay=False  
     )
     file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     
@@ -180,7 +180,7 @@ def check_if_token_expired():
     global token_expiry_datetime
     if token_expiry_datetime is None:
         return True
-    if datetime.now() > token_expiry_datetime:
+    if datetime.now(timezone.utc) > token_expiry_datetime:
         return True
     return False
 
