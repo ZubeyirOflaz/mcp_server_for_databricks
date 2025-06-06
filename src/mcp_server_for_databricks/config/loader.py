@@ -3,9 +3,33 @@
 import yaml
 import logging
 import os
+from pathlib import Path
 from typing import Dict, Any
 
 from mcp_server_for_databricks.config.models import AppConfig, WorkspaceConfig
+
+def find_config_file() -> Path:
+    """Find config.yaml file in project directory structure."""
+    # Start from current working directory and work backwards
+    current_path = Path.cwd()
+    
+    # Check current directory first
+    config_path = current_path / "config.yaml"
+    if config_path.exists():
+        return config_path
+    
+    # Check parent directory (for when running from src/)
+    parent_config = current_path.parent / "config.yaml"
+    if parent_config.exists():
+        return parent_config
+    
+    # Check if we're in src/ and look in project root
+    if current_path.name == "src":
+        root_config = current_path.parent / "config.yaml"
+        if root_config.exists():
+            return root_config
+    
+    raise FileNotFoundError("config.yaml not found in current or parent directories")
 
 async def validate_config_structure(config: Dict[str, Any], logger: logging.Logger) -> bool:
     """
@@ -80,13 +104,10 @@ async def load_config(logger: logging.Logger) -> Dict[str, Any]:
     """
     try:
         logger.info("Loading configuration from config.yaml...")
-        if not os.path.exists("config.yaml"):
-            logger.error("config.yaml file not found")
-            raise Exception(
-                "Configuration file not found. Please run init.py first to set up your configuration."
-            )
+        config_path = find_config_file()
+        logger.info(f"Found config file at: {config_path}")
             
-        with open("config.yaml", "r") as f:
+        with open(config_path, "r") as f:
             config_dict = yaml.safe_load(f)
             
         if not await validate_config_structure(config_dict, logger):
@@ -98,6 +119,11 @@ async def load_config(logger: logging.Logger) -> Dict[str, Any]:
         logger.info("Configuration loaded successfully")
         return config_dict
         
+    except FileNotFoundError:
+        logger.error("config.yaml file not found")
+        raise Exception(
+            "Configuration file not found. Please run init.py first to set up your configuration."
+        )
     except Exception as e:
         logger.error(f"Error loading config.yaml: {str(e)}")
         raise Exception(f"Error loading config.yaml: {str(e)}") 

@@ -11,16 +11,19 @@ async def main():
 
 def run_server():
     """Run the MCP server."""
-    # Create and run the server
+    # Create the app
     app = MCPDatabricksApp()
     
-    # Initialize and run in the same event loop
-    async def init_and_run():
+    # Initialize the app synchronously (letting FastMCP handle the event loop)
+    async def init_app():
         await app.initialize()
-        app.run(transport='stdio')
+        return app
     
-    # Run everything in a single event loop
-    asyncio.run(init_and_run())
+    # Initialize first
+    initialized_app = asyncio.run(init_app())
+    
+    # Then run the server (FastMCP will create its own event loop)
+    initialized_app.run(transport='stdio')
 
 if __name__ == "__main__":
     run_server() 
