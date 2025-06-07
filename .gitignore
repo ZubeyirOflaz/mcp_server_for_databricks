@@ -3,3 +3,4 @@ __pycache__/utils.cpython-312.pyc
 .logs
 .venv
 config.yaml
+*.pyc
