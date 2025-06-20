@@ -131,4 +131,6 @@ dmypy.json
 # Project-specific files
 .input_data
 .logs
+.venv
 config.yaml
+*.pyc

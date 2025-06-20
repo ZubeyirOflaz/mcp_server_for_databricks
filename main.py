@@ -194,8 +194,10 @@ async def initialize_globals():
     if login_initialization_complete:
         if check_if_token_expired():
             # If the token is expired, only execute to refresh the token and client
+            logger.info("Token is expired, executing to refresh the token and client")
             partial_execution = True
         else:
+            logger.info("Token is not expired, skipping initialization")
             return None
     else:
         partial_execution = False
