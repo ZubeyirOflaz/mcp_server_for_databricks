@@ -24,7 +24,7 @@ def create_mcp_server(client_manager: ClientManager) -> FastMCP:
     logger = logging.getLogger(__name__)
 
     @mcp.tool()
-    async def get_schemas_2(catalog: str):
+    async def get_schemas(catalog: str):
         """
         Get all schemas and their tables in the workspace for the default catalog.
         """
@@ -46,7 +46,7 @@ def create_mcp_server(client_manager: ClientManager) -> FastMCP:
             raise HTTPException(status_code=500, detail=str(e))
 
     @mcp.tool()
-    async def get_table_sample_tool_2(catalog: str, schema_name: str, table: str) -> Dict[str, Any]:
+    async def get_table_sample_tool(catalog: str, schema_name: str, table: str) -> Dict[str, Any]:
         """
         Return and save detailed table metadata, including integrated sample data, for a given table.
         This function will save the sample data and table metadata to the .input_data folder if configured.
@@ -87,7 +87,7 @@ def create_mcp_server(client_manager: ClientManager) -> FastMCP:
             raise HTTPException(status_code=500, detail=str(e))
 
     @mcp.tool()
-    async def get_schema_metadata_tool_2(catalog_name: str, schema_name: str):
+    async def get_schema_metadata_tool(catalog_name: str, schema_name: str):
         """
         This function will return the schema metadata for a given schema.
         Args:
@@ -123,7 +123,7 @@ def create_mcp_server(client_manager: ClientManager) -> FastMCP:
             raise HTTPException(status_code=500, detail=str(e))
         
     @mcp.tool()
-    async def get_job_run_result_tool_2(job_name: str, filter_for_failed_runs: bool = False) -> str:
+    async def get_job_run_result_tool(job_name: str, filter_for_failed_runs: bool = False) -> str:
         """
         Retrieves the results of the last run of a specified Databricks job.
 
